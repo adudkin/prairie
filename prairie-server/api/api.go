@@ -39,9 +39,13 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("/state", s.handleState)
-	s.mux.HandleFunc("/move", s.handleMove)
-	s.mux.HandleFunc("/attack", s.handleAttack)
+        s.mux.HandleFunc("/editor", s.handleEditorPage)
+        s.mux.HandleFunc("/editor/data", s.handleEditorData)
+        s.mux.HandleFunc("/editor/location", s.handleEditorLocation)
+        s.mux.HandleFunc("/editor/character", s.handleEditorCharacter)
+        s.mux.HandleFunc("/state", s.handleState)
+        s.mux.HandleFunc("/move", s.handleMove)
+        s.mux.HandleFunc("/attack", s.handleAttack)
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {

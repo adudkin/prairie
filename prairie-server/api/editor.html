@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Prairie Editor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      background: #f3f4f6;
+      color: #1f2933;
+    }
+    .main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 28px;
+    }
+    section {
+      background: #fff;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 24px;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05);
+    }
+    #map-grid {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    #map-grid td {
+      border: 1px solid #dfe3e8;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      background: #fdfdfd;
+      transition: background 0.2s ease;
+    }
+    #map-grid td:hover {
+      background: #ecf5ff;
+    }
+    #map-grid .coord {
+      font-size: 11px;
+      color: #6b7280;
+    }
+    #map-grid .name {
+      font-weight: 600;
+      margin-top: 4px;
+      min-height: 20px;
+    }
+    .char-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: #fafbff;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .char-card label {
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .char-card input[type="text"],
+    .char-card input[type="number"] {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+    }
+    .char-card input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+    .char-card .check-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 500;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      border: 0;
+      background: #2563eb;
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+    .hint {
+      color: #4b5563;
+      margin-bottom: 18px;
+      font-size: 14px;
+    }
+    .tick {
+      font-weight: 600;
+      color: #2563eb;
+    }
+    @media (max-width: 720px) {
+      #map-grid td {
+        padding: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="main">
+    <h1>Prairie World Editor</h1>
+    <p class="hint">Tick: <span class="tick" id="tick">0</span>. Click any map cell to rename a location. Use the forms below to tweak or spawn characters.</p>
+
+    <section>
+      <h2>Map</h2>
+      <table id="map-grid"></table>
+    </section>
+
+    <section>
+      <h2>Characters</h2>
+      <div id="character-list"></div>
+    </section>
+
+    <section>
+      <h2>New character</h2>
+      <div class="char-card" data-id="new">
+        <label>Name
+          <input type="text" name="name" placeholder="Name" />
+        </label>
+        <label>X
+          <input type="number" name="x" value="0" />
+        </label>
+        <label>Y
+          <input type="number" name="y" value="0" />
+        </label>
+        <label>HP
+          <input type="number" name="hp" value="50" />
+        </label>
+        <label>Energy
+          <input type="number" name="energy" value="100" />
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="isPlayer" /> Player
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="isNPC" checked /> NPC
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" onclick="saveCharacter('new')">Create character</button>
+        <button type="button" class="secondary" onclick="resetNewForm()">Reset</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let editorState = { locations: [], characters: [], tick: 0 };
+
+    async function loadEditorData() {
+      const res = await fetch('/editor/data');
+      if (!res.ok) {
+        alert('Failed to load editor data: ' + (await res.text()));
+        return;
+      }
+      editorState = await res.json();
+      document.getElementById('tick').textContent = editorState.tick;
+      renderMap();
+      renderCharacters();
+    }
+
+    function renderMap() {
+      const table = document.getElementById('map-grid');
+      table.innerHTML = '';
+      if (!editorState.locations || !editorState.locations.length) {
+        return;
+      }
+      const maxX = Math.max(...editorState.locations.map((l) => l.x));
+      const maxY = Math.max(...editorState.locations.map((l) => l.y));
+      for (let y = 0; y <= maxY; y++) {
+        const row = document.createElement('tr');
+        for (let x = 0; x <= maxX; x++) {
+          const cell = document.createElement('td');
+          const loc = editorState.locations.find((l) => l.x === x && l.y === y);
+          const coord = document.createElement('div');
+          coord.className = 'coord';
+          coord.textContent = `(${x}:${y})`;
+          const name = document.createElement('div');
+          name.className = 'name';
+          name.textContent = loc ? loc.name : '';
+          cell.appendChild(coord);
+          cell.appendChild(name);
+          cell.addEventListener('click', () => renameLocation(x, y, name.textContent));
+          row.appendChild(cell);
+        }
+        table.appendChild(row);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[c]));
+    }
+
+    function renderCharacters() {
+      const list = document.getElementById('character-list');
+      list.innerHTML = '';
+      const chars = [...(editorState.characters || [])].sort((a, b) => a.id - b.id);
+      chars.forEach((char) => {
+        const card = document.createElement('div');
+        card.className = 'char-card';
+        card.dataset.id = String(char.id);
+        card.innerHTML = `
+          <label>Name
+            <input type="text" name="name" value="${escapeHtml(char.name || '')}" />
+          </label>
+          <label>X
+            <input type="number" name="x" value="${char.x}" />
+          </label>
+          <label>Y
+            <input type="number" name="y" value="${char.y}" />
+          </label>
+          <label>HP
+            <input type="number" name="hp" value="${char.hp}" />
+          </label>
+          <label>Energy
+            <input type="number" name="energy" value="${char.energy}" />
+          </label>
+          <label class="check-row">
+            <input type="checkbox" name="isPlayer" ${char.isPlayer ? 'checked' : ''} /> Player
+          </label>
+          <label class="check-row">
+            <input type="checkbox" name="isNPC" ${char.isNPC ? 'checked' : ''} /> NPC
+          </label>
+          <div class="actions">
+            <button type="button" onclick="saveCharacter(${char.id})">Save</button>
+            <button type="button" class="secondary" onclick="deleteCharacter(${char.id})">Delete</button>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    async function renameLocation(x, y, currentName) {
+      const name = prompt(`Name for (${x}:${y})`, currentName || '');
+      if (name === null) {
+        return;
+      }
+      const res = await fetch('/editor/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y, name })
+      });
+      if (!res.ok) {
+        alert('Failed to rename location: ' + (await res.text()));
+        return;
+      }
+      await loadEditorData();
+    }
+
+    function readCharacterPayload(card) {
+      return {
+        id: card.dataset.id === 'new' ? 0 : Number(card.dataset.id),
+        name: card.querySelector('input[name="name"]').value.trim(),
+        x: Number(card.querySelector('input[name="x"]').value || 0),
+        y: Number(card.querySelector('input[name="y"]').value || 0),
+        hp: Number(card.querySelector('input[name="hp"]').value || 0),
+        energy: Number(card.querySelector('input[name="energy"]').value || 0),
+        isPlayer: card.querySelector('input[name="isPlayer"]').checked,
+        isNPC: card.querySelector('input[name="isNPC"]').checked
+      };
+    }
+
+    async function saveCharacter(id) {
+      const card = document.querySelector(`.char-card[data-id="${id}"]`);
+      if (!card) {
+        return;
+      }
+      const payload = readCharacterPayload(card);
+      if (!payload.name) {
+        alert('Name is required.');
+        return;
+      }
+      const res = await fetch('/editor/character', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        alert('Failed to save character: ' + (await res.text()));
+        return;
+      }
+      await loadEditorData();
+      if (id === 'new') {
+        resetNewForm();
+      }
+    }
+
+    async function deleteCharacter(id) {
+      if (!confirm('Delete character #' + id + '?')) {
+        return;
+      }
+      const res = await fetch('/editor/character?id=' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!res.ok) {
+        alert('Failed to delete character: ' + (await res.text()));
+        return;
+      }
+      await loadEditorData();
+    }
+
+    function resetNewForm() {
+      const card = document.querySelector('.char-card[data-id="new"]');
+      if (!card) {
+        return;
+      }
+      card.querySelector('input[name="name"]').value = '';
+      card.querySelector('input[name="x"]').value = '0';
+      card.querySelector('input[name="y"]').value = '0';
+      card.querySelector('input[name="hp"]').value = '50';
+      card.querySelector('input[name="energy"]').value = '100';
+      card.querySelector('input[name="isPlayer"]').checked = false;
+      card.querySelector('input[name="isNPC"]').checked = true;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadEditorData();
+    });
+  </script>
+</body>
+</html>

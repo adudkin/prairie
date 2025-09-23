@@ -10,7 +10,10 @@ import (
 
 func main() {
 	// Core singletons
-	st := game.NewStorage()
+	st, err := game.NewStorage("prairie.db")
+	if err != nil {
+		log.Fatalf("failed to initialize storage: %v", err)
+	}
 	lg := game.NewLogger(800)
 	pr := game.NewProcessor(st, lg)
 
