@@ -1,0 +1,13 @@
+services:
+  api:
+    build: ./prairie-server
+    container_name: prairie-api
+    expose:
+      - "8080"         # internal only
+  web:
+    build: ./frontend
+    container_name: prairie-web
+    ports:
+      - "8080:80"      # http://localhost:8080
+    depends_on:
+      - api

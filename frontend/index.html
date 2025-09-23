@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prairie</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    :root { --gap: 16px; --leftWidth: 480px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, Arial, sans-serif; background: #fafafa; color: #222; }
+
+    .page {
+      display: grid;
+      grid-template-columns: auto 1fr; /* left sticks to content width; right takes remaining */
+      gap: var(--gap);
+      padding: var(--gap);
+      min-height: 100vh;
+      align-items: start;
+    }
+
+    .tick {
+      position: fixed;
+      top: 10px; right: 12px;
+      font-size: 14px; color: #666;
+      background: #fff; border: 1px solid #eee; padding: 6px 10px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.05);
+      z-index: 5;
+    }
+
+    .leftCol { width: var(--leftWidth); }
+    .fullWidthCard { width: var(--leftWidth); }
+
+    .card { background:#fff; border:1px solid #eee; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.05); padding:16px; }
+    .title { margin:0 0 8px; font-weight:700; font-size:18px; }
+
+    /* Bigger squares */
+    .grid3 { display: grid; grid-template-columns: repeat(3, 140px); grid-template-rows: repeat(3, 110px); gap:10px; }
+    .cell {
+      display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+      border:1px dashed #ddd; border-radius:12px; background:#fcfcfc; padding:6px;
+      transition: transform .05s ease-in-out, background .1s;
+      user-select: none; font-size: 16px;
+    }
+    .cell .name { font-weight:600; }
+    .cell .count { margin-top:4px; font-size: 13px; color:#138a36; } /* green count */
+    .cell.empty { background:#f3f3f3; color:#bbb; border:1px dashed #e5e5e5; }
+    .cell.me { border:1px solid #1e90ff; background:#eef6ff; font-weight:700; }
+    .cell.action { cursor:pointer; }
+    .cell.action:hover { transform: translateY(-1px); background:#f5fbff; }
+
+    .energyBar { position: relative; height: 18px; border:1px solid #ddd; border-radius:12px; overflow:hidden; background:#f5f5f5; }
+    .energyFill { height:100%; background: linear-gradient(90deg, #7cd992, #4dbd6b); }
+    .muted { color:#666; font-size:13px; }
+
+    .side .log {
+      max-height: 420px; overflow:auto; border-top:1px solid #eee; margin-top:12px; padding-top:8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:13px; line-height:1.4;
+    }
+    .log .line { padding:2px 0; }
+
+    /* Simple context menu */
+    .menu {
+      position: absolute; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.08);
+      padding:6px; min-width: 140px; z-index: 10;
+    }
+    .menu button {
+      display:block; width:100%; border:0; background:transparent; padding:8px 10px; text-align:left; cursor:pointer;
+    }
+    .menu button:hover { background:#f5f5f5; }
+    .inlineLink { color:#0366d6; cursor:pointer; }
+
+    /* Done/progress section */
+    .done {
+      position: relative; overflow: hidden; border-radius:10px; border:1px solid #e5f3e8; background:#f9fffb;
+      padding:10px 12px; margin-bottom:12px;
+    }
+    .done .fill {
+      position:absolute; top:0; left:0; bottom:0; width:0%;
+      background: rgba(76, 175, 80, 0.18); /* semitransparent green */
+      pointer-events:none;
+    }
+    .done .title { font-weight:700; margin:0 0 4px; }
+    .done .desc { margin:0; color:#2e7d32; }
+    .hint { font-size:12px; color:#888; }
+    .actionsRow { margin-top:8px; }
+    .btnLink { background:transparent; border:0; color:#0366d6; cursor:pointer; padding:0; font: inherit; }
+    .btnLink:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="tick">Tick: {{ state.tick }}</div>
+
+    <div class="page">
+      <!-- LEFT -->
+      <div class="leftCol">
+        <div class="card fullWidthCard" style="margin-bottom:16px;">
+          <h3 class="title">Around you (3×3)</h3>
+          <div class="grid3">
+            <template v-for="(row, ri) in (state.window3x3 || [])" :key="'r'+ri">
+              <div v-for="(name, ci) in (row || [])" :key="'c'+ri+'-'+ci"
+                   class="cell"
+                   :class="cellClass(ri, ci, name)"
+                   @click="tryMove(ri, ci, name)">
+                <div class="name">{{ name || '' }}</div>
+                <div class="count" v-if="getCount(ri, ci) > 0">{{ getCount(ri, ci) }}</div>
+              </div>
+            </template>
+          </div>
+          <div class="muted" style="margin-top:8px;">Click a neighboring square to move (5-tick action, costs 1 energy).</div>
+          <div v-if="error" class="muted" style="color:#c00; margin-top:6px;">{{ error }}</div>
+        </div>
+
+        <div class="card fullWidthCard">
+          <h3 class="title">Character</h3>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <div class="energyBar" style="flex:1;">
+              <div class="energyFill" :style="{ width: Math.max(0, Math.min(100, state.energy)) + '%' }"></div>
+            </div>
+            <div style="width:56px; text-align:right;">{{ state.energy }}%</div>
+          </div>
+          <div class="muted" v-if="state.energy < 100">
+            +1 energy in {{ state.nextRegenIn }} tick<span v-if="state.nextRegenIn !== 1">s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="side">
+        <!-- Done / In-progress section -->
+        <div v-if="state.action && state.action.active" class="done">
+          <div class="fill" :style="{ width: progressWidth + '%' }"></div>
+          <p class="title">{{ state.action.name }}</p>
+          <p class="desc">
+            <template v-if="state.action.name === 'moving'">
+              to {{ state.action.dest }}, energy now {{ state.energy }}
+            </template>
+            <template v-else>
+              {{ state.action.targetName }} —
+              <span v-if="state.action.lastResult === 'pending'">preparing…</span>
+              <span v-else>last: {{ state.action.lastResult }}</span>
+              <span v-if="currentTargetHP !== null"> (HP {{ currentTargetHP }})</span>
+            </template>
+          </p>
+        </div>
+
+        <!-- After attack completion, keep the section -->
+        <div v-else-if="state.lastAction && state.lastAction.name === 'attack'" class="done">
+          <div class="fill" style="width: 100%; opacity: .12;"></div>
+          <p class="title">{{ state.lastAction.name }}</p>
+          <p class="desc">{{ state.lastAction.description }}</p>
+          <div class="actionsRow" v-if="canAttackAgain">
+            <button class="btnLink" @click="attack(state.lastAction.targetId)">attack again</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="title">Surroundings</h3>
+          <div>You are at <strong>{{ state.locationName }}</strong></div>
+
+          <div v-if="state.hereNPCs && state.hereNPCs.length" style="margin-top:8px;">
+            <div><strong>Also here:</strong>
+              <span v-for="(n, i) in state.hereNPCs" :key="n.id" style="margin-right:12px; position: relative;">
+                <span class="inlineLink" @click="toggleMenu(n.id, $event)">{{ n.name }}</span>
+                <span class="muted"> (HP {{ n.hp }})</span>
+
+                <!-- Simple anchor-positioned menu -->
+                <div v-if="showMenuFor === n.id" class="menu" :style="menuStyle">
+                  <button @click="attack(n.id)" :disabled="busy">Attack (1 energy, 5 ticks)</button>
+                </div>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3 class="title">Log</h3>
+          <div class="log">
+            <div v-if="!(state.logs && state.logs.length)" class="muted">No events yet.</div>
+            <div v-for="(l, i) in (state.logs || []).slice().reverse()" :key="i" class="line">
+              [{{ l.tick }}][{{ l.component }}] {{ l.message }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const state = ref({
+      tick: 0, x:0, y:0, energy: 100, nextRegenIn: 0,
+      locationName: "(0:0)",
+      window3x3: [["","",""],["","",""],["","",""]],
+      window3x3Counts: [[0,0,0],[0,0,0],[0,0,0]],
+      logs: [],
+      hereNPCs: [],
+      action: null,
+      lastAction: null
+    });
+    const error = ref("");
+    const showMenuFor = ref(null);
+    const menuStyle = ref({ left: "0px", top: "0px" });
+
+    const busy = computed(() => state.value.action && state.value.action.active);
+    const progressWidth = computed(() => {
+      const a = state.value.action;
+      if (!a || !a.active) return 0;
+      const done = (a.total - a.remaining);
+      return Math.max(0, Math.min(100, (done / a.total) * 100));
+    });
+    const currentTargetHP = computed(() => {
+      const a = state.value.action;
+      if (!a || a.name !== 'attack') return null;
+      const n = (state.value.hereNPCs || []).find(x => x.id === a.targetId);
+      return n ? n.hp : null;
+    });
+    const canAttackAgain = computed(() => {
+      const la = state.value.lastAction;
+      if (!la || la.name !== 'attack') return false;
+      const target = (state.value.hereNPCs || []).find(x => x.id === la.targetId);
+      return !!target && !busy.value;
+    });
+
+    function fetchState() {
+      fetch('/api/state')
+        .then(r => r.json())
+        .then(s => {
+          s.logs = s.logs || [];
+          s.window3x3 = Array.isArray(s.window3x3) ? s.window3x3 : [["","",""],["","",""],["","",""]];
+          s.window3x3Counts = Array.isArray(s.window3x3Counts) ? s.window3x3Counts : [[0,0,0],[0,0,0],[0,0,0]];
+          s.hereNPCs = s.hereNPCs || [];
+          state.value = s;
+        })
+        .catch(() => {});
+    }
+
+    function tryMove(ri, ci, name) {
+      if (busy.value) { error.value = "Action in progress"; return; }
+      error.value = "";
+      const dy = ri - 1;
+      const dx = ci - 1;
+      if (dx === 0 && dy === 0) return; // center
+      if (!name) return; // out-of-bounds
+      fetch(`/api/move?dx=${dx}&dy=${dy}`, { method: 'POST' })
+        .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
+        .then(s => { state.value = s; showMenuFor.value = null; })
+        .catch(e => { error.value = e.message || 'Move failed'; });
+    }
+
+    function toggleMenu(id, ev) {
+      if (busy.value) return;
+      if (showMenuFor.value === id) { showMenuFor.value = null; return; }
+      const rect = ev.target.getBoundingClientRect();
+      menuStyle.value = { left: (rect.left) + "px", top: (rect.bottom + 6) + "px", position: "fixed" };
+      showMenuFor.value = id;
+    }
+
+    function attack(id) {
+      if (busy.value) { error.value = "Action in progress"; return; }
+      error.value = "";
+      fetch(`/api/attack?targetId=${id}`, { method: 'POST' })
+        .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
+        .then(s => { state.value = s; showMenuFor.value = null; })
+        .catch(e => { error.value = e.message || 'Attack failed'; });
+    }
+
+    // Close menu on click outside
+    window.addEventListener('click', (e) => {
+      if (!e.target.closest || !e.target.closest('.menu')) {
+        if (!e.target.classList || !e.target.classList.contains('inlineLink')) {
+          showMenuFor.value = null;
+        }
+      }
+    });
+
+    function cellClass(ri, ci, name) {
+      const classes = [];
+      if (!name) classes.push('empty');
+      if (ri === 1 && ci === 1) classes.push('me'); else if (name && !busy.value) classes.push('action');
+      return classes.join(' ');
+    }
+
+    function getCount(ri, ci) {
+      const c = state.value.window3x3Counts;
+      return (c && c[ri] && typeof c[ri][ci] === 'number') ? c[ri][ci] : 0;
+    }
+
+    onMounted(() => {
+      fetchState();
+      setInterval(fetchState, 1000);
+    });
+
+    return {
+      state, error, tryMove, cellClass, getCount,
+      showMenuFor, toggleMenu, attack, menuStyle,
+      busy, progressWidth, currentTargetHP, canAttackAgain
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
