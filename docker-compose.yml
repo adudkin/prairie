@@ -2,8 +2,12 @@ services:
   api:
     build: ./prairie-server
     container_name: prairie-api
+    environment:
+      - PRAIRIE_DB_PATH=/data/prairie.db
     expose:
       - "8080"         # internal only
+    volumes:
+      - prairie-data:/data
   web:
     build: ./frontend
     container_name: prairie-web
@@ -11,3 +15,6 @@ services:
       - "8080:80"      # http://localhost:8080
     depends_on:
       - api
+
+volumes:
+  prairie-data:
