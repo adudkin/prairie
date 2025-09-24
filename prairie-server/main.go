@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"time"
 
 	"example.com/prairie/api"
@@ -10,7 +11,12 @@ import (
 
 func main() {
 	// Core singletons
-	st, err := game.NewStorage("prairie.db")
+	dbPath := os.Getenv("PRAIRIE_DB_PATH")
+	if dbPath == "" {
+		dbPath = "/tmp/prairie.db"
+	}
+
+	st, err := game.NewStorage(dbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize storage: %v", err)
 	}
