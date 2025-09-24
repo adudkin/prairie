@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -47,6 +49,11 @@ func NewStorage(dbPath string) (*Storage, error) {
 	st.resetInMemory()
 
 	if dbPath != "" {
+		if dir := filepath.Dir(dbPath); dir != "." && dir != "" {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return nil, err
+			}
+		}
 		db, err := sql.Open("sqlite", dbPath)
 		if err != nil {
 			return nil, err
